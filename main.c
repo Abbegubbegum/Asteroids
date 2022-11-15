@@ -67,12 +67,19 @@ void draw_player(player_t player)
 	DrawLineV(center, (Vector2){center.x + dir.x * 40, center.y + dir.y * 40}, WHITE);
 }
 
-void move_player(player_t *player, int dir)
+void move_player_forward(player_t *player, int dir)
 {
 	static int speed = 5;
 	Vector2 p_dir = get_dir_vector(player->angle);
 	player->pos.x += p_dir.x * dir * speed;
 	player->pos.y += p_dir.y * dir * speed;
+}
+
+void move_player_strafe(player_t *player, int xdir, int ydir)
+{
+	static int speed = 5;
+	player->pos.x += xdir * speed;
+	player->pos.y += ydir * speed;
 }
 
 // DIR = -1 === CTR CLOCKWISE, DIR = 1 === CLOCKWISE
@@ -188,12 +195,26 @@ void draw_asteroids()
 	}
 }
 
+void update_mouse_controls(player_t *player)
+{
+	Vector2 mouse_pos = GetMousePosition();
+
+	Vector2 pc = get_center_vector(player->pos, player->h, player->w);
+
+	Vector2 dir = (Vector2){mouse_pos.x - pc.x, mouse_pos.y - pc.y};
+
+	normalize_vector(&dir);
+
+	player->angle = atan2(dir.y, dir.x);
+}
+
 int main()
 {
 	srand(time(NULL));
 
 	player_t player = (player_t){.pos = {300, 300}, .w = 20, .h = 20, .angle = 0};
 	float asteroidTime = 0;
+	bool mouseControls = true;
 
 	InitWindow(WIDTH, HEIGHT, "Asteroids");
 	SetTargetFPS(60);
@@ -203,7 +224,7 @@ int main()
 		// UPDATE
 		asteroidTime += GetFrameTime();
 
-		if (asteroidTime > 1)
+		if (asteroidTime > 0.5)
 		{
 			create_random_asteroid(player.pos);
 			asteroidTime = 0;
@@ -211,23 +232,56 @@ int main()
 
 		if (IsKeyDown(KEY_A))
 		{
-			rotate_player(&player, -1);
+			if (mouseControls)
+			{
+				move_player_strafe(&player, -1, 0);
+			}
+			else
+			{
+				rotate_player(&player, -1);
+			}
 		}
 		if (IsKeyDown(KEY_D))
 		{
-			rotate_player(&player, 1);
+			if (mouseControls)
+			{
+				move_player_strafe(&player, 1, 0);
+			}
+			else
+			{
+				rotate_player(&player, 1);
+			}
 		}
 		if (IsKeyDown(KEY_W))
 		{
-			move_player(&player, 1);
+			if (mouseControls)
+			{
+				move_player_strafe(&player, 0, -1);
+			}
+			else
+			{
+				move_player_forward(&player, 1);
+			}
 		}
 		if (IsKeyDown(KEY_S))
 		{
-			move_player(&player, -1);
+			if (mouseControls)
+			{
+				move_player_strafe(&player, 0, 1);
+			}
+			else
+			{
+				move_player_forward(&player, -1);
+			}
 		}
-		if (IsKeyPressed(KEY_SPACE))
+		if (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(0))
 		{
 			create_bullet(player);
+		}
+
+		if (mouseControls)
+		{
+			update_mouse_controls(&player);
 		}
 
 		update_bullets();
@@ -255,7 +309,7 @@ int main()
 
 		ClearBackground(BLACK);
 
-		DrawText(TextFormat("%d", points), WIDTH / 2, HEIGHT / 2, 128, WHITE);
+		DrawText(TextFormat("%d", points), WIDTH / 2 - MeasureText(TextFormat("%d", points), 128), HEIGHT / 2 - 20, 128, WHITE);
 
 		EndDrawing();
 	}
