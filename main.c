@@ -7,6 +7,7 @@
 typedef struct
 {
 	Vector2 pos;
+	Vector2 vel;
 	int h;
 	int w;
 	float angle;
@@ -38,8 +39,9 @@ int ASTEROID_SPEED = 5;
 asteroid_t asteroids[128];
 int current_asteroid_index = 0;
 
-int points = 0;
+int blink_length = 200;
 
+int points = 0;
 bool should_close = false;
 
 Vector2 get_dir_vector(float angle)
@@ -57,6 +59,13 @@ void normalize_vector(Vector2 *p)
 	float w = sqrt(p->x * p->x + p->y * p->y);
 	p->x /= w;
 	p->y /= w;
+}
+
+Vector2 get_inbetween_dir_vector(Vector2 source, Vector2 target)
+{
+	Vector2 dir = {target.x - source.x, target.y - source.y};
+	normalize_vector(&dir);
+	return dir;
 }
 
 void draw_player(player_t player)
@@ -80,6 +89,23 @@ void move_player_strafe(player_t *player, int xdir, int ydir)
 	static int speed = 5;
 	player->pos.x += xdir * speed;
 	player->pos.y += ydir * speed;
+
+	player->vel.x += xdir;
+	player->vel.y += ydir;
+}
+
+void blink_player_dir(player_t *player)
+{
+	Vector2 dir = get_dir_vector(player->angle);
+
+	player->pos.x += dir.x * blink_length;
+	player->pos.y += dir.y * blink_length;
+}
+
+void blink_player_vel(player_t *player)
+{
+	player->pos.x += player->vel.x * blink_length;
+	player->pos.y += player->vel.y * blink_length;
 }
 
 // DIR = -1 === CTR CLOCKWISE, DIR = 1 === CLOCKWISE
@@ -136,9 +162,7 @@ void create_random_asteroid(Vector2 target_pos)
 		.is_on_screen = false,
 	};
 
-	asteroid.dir = (Vector2){target_pos.x - asteroid.pos.x, target_pos.y - asteroid.pos.y};
-
-	normalize_vector(&asteroid.dir);
+	asteroid.dir = get_inbetween_dir_vector(asteroid.pos, target_pos);
 
 	asteroids[current_asteroid_index] = asteroid;
 	current_asteroid_index++;
@@ -201,9 +225,7 @@ void update_mouse_controls(player_t *player)
 
 	Vector2 pc = get_center_vector(player->pos, player->h, player->w);
 
-	Vector2 dir = (Vector2){mouse_pos.x - pc.x, mouse_pos.y - pc.y};
-
-	normalize_vector(&dir);
+	Vector2 dir = get_inbetween_dir_vector(pc, mouse_pos);
 
 	player->angle = atan2(dir.y, dir.x);
 }
@@ -213,7 +235,8 @@ int main()
 	srand(time(NULL));
 
 	player_t player = (player_t){.pos = {300, 300}, .w = 20, .h = 20, .angle = 0};
-	float asteroidTime = 0;
+	float asteroid_spawn_timer = 0;
+	float blink_timer = 0;
 	bool mouseControls = true;
 
 	InitWindow(WIDTH, HEIGHT, "Asteroids");
@@ -222,12 +245,20 @@ int main()
 	while (!WindowShouldClose())
 	{
 		// UPDATE
-		asteroidTime += GetFrameTime();
+		asteroid_spawn_timer += GetFrameTime();
+		blink_timer -= GetFrameTime();
 
-		if (asteroidTime > 0.5)
+		player.vel = (Vector2){0, 0};
+
+		if (asteroid_spawn_timer > 0.5)
 		{
 			create_random_asteroid(player.pos);
-			asteroidTime = 0;
+			asteroid_spawn_timer = 0;
+		}
+
+		if (mouseControls)
+		{
+			update_mouse_controls(&player);
 		}
 
 		if (IsKeyDown(KEY_A))
@@ -274,14 +305,21 @@ int main()
 				move_player_forward(&player, -1);
 			}
 		}
+
 		if (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(0))
 		{
 			create_bullet(player);
 		}
 
-		if (mouseControls)
+		if (IsKeyPressed(KEY_E) || IsMouseButtonPressed(1))
 		{
-			update_mouse_controls(&player);
+			if (blink_timer <= 0)
+			{
+				blink_player_dir(&player);
+				// blink_player_vel(&player);
+
+				blink_timer = 5;
+			}
 		}
 
 		update_bullets();
@@ -295,6 +333,7 @@ int main()
 		draw_asteroids();
 		draw_bullets();
 		DrawText(TextFormat("%d", points), 10, 10, 64, WHITE);
+		DrawRectangle(10, 100, blink_timer <= 0 ? 0 : 200 * (blink_timer / 5), 20, RED);
 		EndDrawing();
 
 		if (should_close)
@@ -303,7 +342,7 @@ int main()
 		}
 	}
 
-	while (!WindowShouldClose())
+	while (!WindowShouldClose() && should_close)
 	{
 		BeginDrawing();
 
