@@ -7,4 +7,4 @@
 [x] Rare asteroids worth extra
 [x] Different behaviours like spinning and zig-zagging
 }
-[x] A Particle System
+[~] A Particle System
