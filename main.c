@@ -68,8 +68,8 @@ const int MAX_PARTICLE_GROUPS = 32;
 particle_group_t particle_groups[32];
 int current_particle_index = 0;
 
-int blink_length = 200;
-int blink_cooldown = 5;
+const int BLINK_LENGTH = 200;
+const int BLINK_COOLDOWN = 5;
 
 float kill_cooldown = 10;
 float kill_timer;
@@ -131,14 +131,14 @@ void blink_player_dir(player_t *player)
 {
 	Vector2 dir = get_dir_vector(player->angle);
 
-	player->pos.x += dir.x * blink_length;
-	player->pos.y += dir.y * blink_length;
+	player->pos.x += dir.x * BLINK_LENGTH;
+	player->pos.y += dir.y * BLINK_LENGTH;
 }
 
 void blink_player_vel(player_t *player)
 {
-	player->pos.x += player->vel.x * blink_length;
-	player->pos.y += player->vel.y * blink_length;
+	player->pos.x += player->vel.x * BLINK_LENGTH;
+	player->pos.y += player->vel.y * BLINK_LENGTH;
 }
 
 // DIR = -1 === CTR CLOCKWISE, DIR = 1 === CLOCKWISE
@@ -441,7 +441,7 @@ int main(void)
 					blink_player_dir(&player);
 					// blink_player_vel(&player);
 
-					blink_timer = blink_cooldown;
+					blink_timer = BLINK_COOLDOWN;
 				}
 			}
 
@@ -459,8 +459,9 @@ int main(void)
 			draw_asteroids();
 			draw_bullets();
 			DrawText(TextFormat("%d", points), 10, 10, 64, WHITE);
-			DrawText("Blink Cooldown:", 10, 70, 32, RED);
-			DrawRectangle(10, 100, blink_timer <= 0 ? 200 : 200 - 200 * (blink_timer / blink_cooldown), 20, RED);
+			DrawText("Blink:", 10, 70, 32, RED);
+			DrawRectangle(10, 110, blink_timer <= 0 ? 200 : 200 - 200 * (blink_timer / BLINK_COOLDOWN), 20, RED);
+			DrawRectangleLinesEx((Rectangle){10, 110, 200, 20}, 1, WHITE);
 
 			kill_bar_half_length = (kill_bar_max_length / 2) * (kill_timer / kill_cooldown);
 
