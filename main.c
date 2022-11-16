@@ -23,6 +23,8 @@ typedef struct
 {
 	Vector2 pos;
 	Vector2 dir;
+	float size;
+	int speed;
 	bool is_on_screen;
 } asteroid_t;
 
@@ -34,15 +36,19 @@ const int BULLET_SPEED = 10;
 bullet_t bullets[128];
 int current_bullet_index = 0;
 
-const int ASTEROID_RADIUS = 15;
-int ASTEROID_SPEED = 5;
+const float ASTEROID_BASE_RADIUS = 15;
+const float ASTEROID_BASE_SPEED = 5;
 asteroid_t asteroids[128];
 int current_asteroid_index = 0;
 
 int blink_length = 200;
+int blink_cooldown = 5;
+
+float kill_cooldown = 10;
+float kill_timer;
 
 int points = 0;
-bool should_close = false;
+bool gameover = false;
 
 Vector2 get_dir_vector(float angle)
 {
@@ -157,9 +163,15 @@ void create_random_asteroid(Vector2 target_pos)
 {
 	double angle = (rand() % 360) * DEG2RAD;
 
+	float size = ASTEROID_BASE_RADIUS * (((100 + ((rand() % 150) - 50))) / (float)100);
+
+	float speed_thing = ASTEROID_BASE_RADIUS * ASTEROID_BASE_SPEED;
+
 	asteroid_t asteroid = {
 		.pos = {WIDTH / 2 + cos(angle) * WIDTH, HEIGHT / 2 + sin(angle) * HEIGHT},
 		.is_on_screen = false,
+		.size = size,
+		.speed = speed_thing / size,
 	};
 
 	asteroid.dir = get_inbetween_dir_vector(asteroid.pos, target_pos);
@@ -178,26 +190,28 @@ void update_asteroids(player_t player)
 {
 	for (int i = 0; i < current_asteroid_index; i++)
 	{
-		asteroids[i].pos.x += asteroids[i].dir.x * ASTEROID_SPEED;
-		asteroids[i].pos.y += asteroids[i].dir.y * ASTEROID_SPEED;
+		asteroids[i].pos.x += asteroids[i].dir.x * asteroids[i].speed;
+		asteroids[i].pos.y += asteroids[i].dir.y * asteroids[i].speed;
 
-		if (CheckCollisionCircleRec(asteroids[i].pos, ASTEROID_RADIUS, (Rectangle){.x = player.pos.x, .y = player.pos.y, .width = player.w, .height = player.h}))
+		if (CheckCollisionCircleRec(asteroids[i].pos, asteroids[i].size, (Rectangle){.x = player.pos.x, .y = player.pos.y, .width = player.w, .height = player.h}))
 		{
-			should_close = true;
+			gameover = true;
 		}
 
 		for (int j = 0; j < current_bullet_index; j++)
 		{
-			if (CheckCollisionCircles(asteroids[i].pos, ASTEROID_RADIUS, bullets[j].pos, BULLET_RADIUS))
+			if (CheckCollisionCircles(asteroids[i].pos, asteroids[i].size, bullets[j].pos, BULLET_RADIUS))
 			{
 				remove_asteroid(i);
 				remove_bullet(j);
 				points++;
+				kill_timer = kill_cooldown;
+				kill_cooldown *= 0.95;
 			}
 		}
 
 		// IF OUTSIDE OF SCREEN
-		if (asteroids[i].pos.x + ASTEROID_RADIUS < 0 || asteroids[i].pos.x - ASTEROID_RADIUS > WIDTH || asteroids[i].pos.y + ASTEROID_RADIUS < 0 || asteroids[i].pos.y - ASTEROID_RADIUS > HEIGHT)
+		if (asteroids[i].pos.x + asteroids[i].size < 0 || asteroids[i].pos.x - asteroids[i].size > WIDTH || asteroids[i].pos.y + asteroids[i].size < 0 || asteroids[i].pos.y - asteroids[i].size > HEIGHT)
 		{
 			if (asteroids[i].is_on_screen)
 			{
@@ -215,7 +229,7 @@ void draw_asteroids()
 {
 	for (int i = 0; i < current_asteroid_index; i++)
 	{
-		DrawCircleV(asteroids[i].pos, ASTEROID_RADIUS, GREEN);
+		DrawCircleV(asteroids[i].pos, asteroids[i].size, GREEN);
 	}
 }
 
@@ -237,7 +251,11 @@ int main()
 	player_t player = (player_t){.pos = {300, 300}, .w = 20, .h = 20, .angle = 0};
 	float asteroid_spawn_timer = 0;
 	float blink_timer = 0;
-	bool mouseControls = true;
+	bool mouse_controls = true;
+	kill_timer = kill_cooldown;
+
+	int kill_bar_max_length = 300;
+	int kill_bar_half_length;
 
 	InitWindow(WIDTH, HEIGHT, "Asteroids");
 	SetTargetFPS(60);
@@ -247,8 +265,14 @@ int main()
 		// UPDATE
 		asteroid_spawn_timer += GetFrameTime();
 		blink_timer -= GetFrameTime();
+		kill_timer -= GetFrameTime();
 
 		player.vel = (Vector2){0, 0};
+
+		if (kill_timer <= 0)
+		{
+			gameover = true;
+		}
 
 		if (asteroid_spawn_timer > 0.5)
 		{
@@ -256,14 +280,14 @@ int main()
 			asteroid_spawn_timer = 0;
 		}
 
-		if (mouseControls)
+		if (mouse_controls)
 		{
 			update_mouse_controls(&player);
 		}
 
 		if (IsKeyDown(KEY_A))
 		{
-			if (mouseControls)
+			if (mouse_controls)
 			{
 				move_player_strafe(&player, -1, 0);
 			}
@@ -274,7 +298,7 @@ int main()
 		}
 		if (IsKeyDown(KEY_D))
 		{
-			if (mouseControls)
+			if (mouse_controls)
 			{
 				move_player_strafe(&player, 1, 0);
 			}
@@ -285,7 +309,7 @@ int main()
 		}
 		if (IsKeyDown(KEY_W))
 		{
-			if (mouseControls)
+			if (mouse_controls)
 			{
 				move_player_strafe(&player, 0, -1);
 			}
@@ -296,7 +320,7 @@ int main()
 		}
 		if (IsKeyDown(KEY_S))
 		{
-			if (mouseControls)
+			if (mouse_controls)
 			{
 				move_player_strafe(&player, 0, 1);
 			}
@@ -318,13 +342,18 @@ int main()
 				blink_player_dir(&player);
 				// blink_player_vel(&player);
 
-				blink_timer = 5;
+				blink_timer = blink_cooldown;
 			}
 		}
 
 		update_bullets();
 
 		update_asteroids(player);
+
+		if (gameover)
+		{
+			break;
+		}
 
 		// DRAW
 		BeginDrawing();
@@ -333,16 +362,20 @@ int main()
 		draw_asteroids();
 		draw_bullets();
 		DrawText(TextFormat("%d", points), 10, 10, 64, WHITE);
-		DrawRectangle(10, 100, blink_timer <= 0 ? 0 : 200 * (blink_timer / 5), 20, RED);
-		EndDrawing();
+		DrawText("Blink Cooldown:", 10, 70, 32, RED);
+		DrawRectangle(10, 100, blink_timer <= 0 ? 0 : 200 * (blink_timer / blink_cooldown), 20, RED);
 
-		if (should_close)
-		{
-			break;
-		}
+		kill_bar_half_length = (kill_bar_max_length / 2) * (kill_timer / kill_cooldown);
+
+		DrawRectangle((WIDTH / 2) - kill_bar_half_length, 0, kill_bar_half_length, 15, GREEN);
+		DrawRectangle(WIDTH / 2, 0, kill_bar_half_length, 15, GREEN);
+
+		DrawText(TextFormat("%f", asteroids[current_asteroid_index - 1].size), 700, 0, 32, WHITE);
+
+		EndDrawing();
 	}
 
-	while (!WindowShouldClose() && should_close)
+	while (!WindowShouldClose() && gameover)
 	{
 		BeginDrawing();
 
