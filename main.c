@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 typedef struct
 {
@@ -25,8 +26,28 @@ typedef struct
 	Vector2 dir;
 	float size;
 	int speed;
+	int point_value;
 	bool is_on_screen;
 } asteroid_t;
+
+typedef struct
+{
+	Vector2 pos;
+	Vector2 dir;
+} particle_t;
+
+typedef struct
+{
+	Vector2 origin;
+	particle_t *particles;
+} particle_group_t;
+
+typedef enum
+{
+	GS_NONE,
+	GS_RUNNING,
+	GS_GAMEOVER,
+} gamestate_e;
 
 const int HEIGHT = 800;
 const int WIDTH = 800;
@@ -41,6 +62,12 @@ const float ASTEROID_BASE_SPEED = 5;
 asteroid_t asteroids[128];
 int current_asteroid_index = 0;
 
+const int PARTICLE_COUNT = 32;
+const int PARTICLE_SPEED = 10;
+const int MAX_PARTICLE_GROUPS = 32;
+particle_group_t particle_groups[32];
+int current_particle_index = 0;
+
 int blink_length = 200;
 int blink_cooldown = 5;
 
@@ -48,7 +75,7 @@ float kill_cooldown = 10;
 float kill_timer;
 
 int points = 0;
-bool gameover = false;
+gamestate_e gamestate = GS_RUNNING;
 
 Vector2 get_dir_vector(float angle)
 {
@@ -136,7 +163,7 @@ void remove_bullet(int index)
 	bullets[index] = bullets[current_bullet_index];
 }
 
-void update_bullets()
+void update_bullets(void)
 {
 	for (int i = 0; i < current_bullet_index; i++)
 	{
@@ -151,12 +178,74 @@ void update_bullets()
 	}
 }
 
-void draw_bullets()
+void draw_bullets(void)
 {
 	for (int i = 0; i < current_bullet_index; i++)
 	{
 		DrawCircleV(bullets[i].pos, BULLET_RADIUS, RED);
 	}
+}
+
+void create_particle_group(Vector2 origin)
+{
+	particle_group_t group = (particle_group_t){
+		.origin = origin,
+		.particles = calloc(PARTICLE_COUNT, sizeof(particle_t)),
+	};
+
+	for (int i = 0; i < PARTICLE_COUNT; i++)
+	{
+		float angle = (rand() % 360) * DEG2RAD;
+
+		group.particles[i] = (particle_t){
+			.pos = origin,
+			.dir = get_dir_vector(angle),
+		};
+	}
+
+	particle_groups[current_particle_index] = group;
+	printf("%f, %f \n", particle_groups[current_particle_index].particles[0].pos.x, particle_groups[current_particle_index].particles[0].pos.y);
+	current_particle_index++;
+
+	current_particle_index = current_particle_index % MAX_PARTICLE_GROUPS;
+}
+
+void update_particles(void)
+{
+	particle_t *particle;
+
+	for (int i = 0; i < current_particle_index; i++)
+	{
+		for (int j = 0; j < PARTICLE_COUNT; j++)
+		{
+			particle = &particle_groups[i].particles[j];
+
+			particle->pos.x += particle->dir.x * PARTICLE_SPEED;
+			particle->pos.y += particle->dir.y * PARTICLE_SPEED;
+		}
+	}
+}
+
+void draw_particles(void)
+{
+	particle_t particle = {0};
+
+	for (int i = 0; i < current_particle_index; i++)
+	{
+		for (int j = 0; j < PARTICLE_COUNT; j++)
+		{
+			particle = particle_groups[i].particles[j];
+
+			DrawCircleV(particle.pos, 5, WHITE);
+		}
+	}
+}
+
+void remove_particle(int index)
+{
+	free(particle_groups[index].particles);
+	current_particle_index--;
+	particle_groups[index] = particle_groups[current_particle_index];
 }
 
 void create_random_asteroid(Vector2 target_pos)
@@ -167,11 +256,14 @@ void create_random_asteroid(Vector2 target_pos)
 
 	float speed_thing = ASTEROID_BASE_RADIUS * ASTEROID_BASE_SPEED;
 
+	float point_thing = ASTEROID_BASE_RADIUS * 100;
+
 	asteroid_t asteroid = {
 		.pos = {WIDTH / 2 + cos(angle) * WIDTH, HEIGHT / 2 + sin(angle) * HEIGHT},
 		.is_on_screen = false,
 		.size = size,
 		.speed = speed_thing / size,
+		.point_value = point_thing / size,
 	};
 
 	asteroid.dir = get_inbetween_dir_vector(asteroid.pos, target_pos);
@@ -195,16 +287,17 @@ void update_asteroids(player_t player)
 
 		if (CheckCollisionCircleRec(asteroids[i].pos, asteroids[i].size, (Rectangle){.x = player.pos.x, .y = player.pos.y, .width = player.w, .height = player.h}))
 		{
-			gameover = true;
+			gamestate = GS_GAMEOVER;
 		}
 
 		for (int j = 0; j < current_bullet_index; j++)
 		{
 			if (CheckCollisionCircles(asteroids[i].pos, asteroids[i].size, bullets[j].pos, BULLET_RADIUS))
 			{
+				create_particle_group(asteroids[i].pos);
 				remove_asteroid(i);
 				remove_bullet(j);
-				points++;
+				points += asteroids[i].point_value;
 				kill_timer = kill_cooldown;
 				kill_cooldown *= 0.95;
 			}
@@ -225,7 +318,7 @@ void update_asteroids(player_t player)
 	}
 }
 
-void draw_asteroids()
+void draw_asteroids(void)
 {
 	for (int i = 0; i < current_asteroid_index; i++)
 	{
@@ -244,7 +337,7 @@ void update_mouse_controls(player_t *player)
 	player->angle = atan2(dir.y, dir.x);
 }
 
-int main()
+int main(void)
 {
 	srand(time(NULL));
 
@@ -260,130 +353,169 @@ int main()
 	InitWindow(WIDTH, HEIGHT, "Asteroids");
 	SetTargetFPS(60);
 
+	bool gameover_first_frame = true;
+
 	while (!WindowShouldClose())
 	{
-		// UPDATE
-		asteroid_spawn_timer += GetFrameTime();
-		blink_timer -= GetFrameTime();
-		kill_timer -= GetFrameTime();
-
-		player.vel = (Vector2){0, 0};
-
-		if (kill_timer <= 0)
+		switch (gamestate)
 		{
-			gameover = true;
-		}
-
-		if (asteroid_spawn_timer > 0.5)
+		case GS_RUNNING:
 		{
-			create_random_asteroid(player.pos);
-			asteroid_spawn_timer = 0;
-		}
+			// UPDATE
+			asteroid_spawn_timer += GetFrameTime();
+			blink_timer -= GetFrameTime();
+			kill_timer -= GetFrameTime();
 
-		if (mouse_controls)
-		{
-			update_mouse_controls(&player);
-		}
+			player.vel = (Vector2){0, 0};
 
-		if (IsKeyDown(KEY_A))
-		{
+			if (kill_timer <= 0)
+			{
+				gamestate = GS_GAMEOVER;
+			}
+
+			if (asteroid_spawn_timer > 0.5)
+			{
+				create_random_asteroid(player.pos);
+				asteroid_spawn_timer = 0;
+			}
+
 			if (mouse_controls)
 			{
-				move_player_strafe(&player, -1, 0);
+				update_mouse_controls(&player);
 			}
-			else
-			{
-				rotate_player(&player, -1);
-			}
-		}
-		if (IsKeyDown(KEY_D))
-		{
-			if (mouse_controls)
-			{
-				move_player_strafe(&player, 1, 0);
-			}
-			else
-			{
-				rotate_player(&player, 1);
-			}
-		}
-		if (IsKeyDown(KEY_W))
-		{
-			if (mouse_controls)
-			{
-				move_player_strafe(&player, 0, -1);
-			}
-			else
-			{
-				move_player_forward(&player, 1);
-			}
-		}
-		if (IsKeyDown(KEY_S))
-		{
-			if (mouse_controls)
-			{
-				move_player_strafe(&player, 0, 1);
-			}
-			else
-			{
-				move_player_forward(&player, -1);
-			}
-		}
 
-		if (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(0))
-		{
-			create_bullet(player);
-		}
-
-		if (IsKeyPressed(KEY_E) || IsMouseButtonPressed(1))
-		{
-			if (blink_timer <= 0)
+			if (IsKeyDown(KEY_A))
 			{
-				blink_player_dir(&player);
-				// blink_player_vel(&player);
-
-				blink_timer = blink_cooldown;
+				if (mouse_controls)
+				{
+					move_player_strafe(&player, -1, 0);
+				}
+				else
+				{
+					rotate_player(&player, -1);
+				}
 			}
+			if (IsKeyDown(KEY_D))
+			{
+				if (mouse_controls)
+				{
+					move_player_strafe(&player, 1, 0);
+				}
+				else
+				{
+					rotate_player(&player, 1);
+				}
+			}
+			if (IsKeyDown(KEY_W))
+			{
+				if (mouse_controls)
+				{
+					move_player_strafe(&player, 0, -1);
+				}
+				else
+				{
+					move_player_forward(&player, 1);
+				}
+			}
+			if (IsKeyDown(KEY_S))
+			{
+				if (mouse_controls)
+				{
+					move_player_strafe(&player, 0, 1);
+				}
+				else
+				{
+					move_player_forward(&player, -1);
+				}
+			}
+
+			if (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(0))
+			{
+				create_bullet(player);
+			}
+
+			if (IsKeyPressed(KEY_E) || IsMouseButtonPressed(1))
+			{
+				if (blink_timer <= 0)
+				{
+					blink_player_dir(&player);
+					// blink_player_vel(&player);
+
+					blink_timer = blink_cooldown;
+				}
+			}
+
+			update_bullets();
+
+			update_asteroids(player);
+
+			update_particles();
+
+			// DRAW
+			BeginDrawing();
+			ClearBackground(BLACK);
+			draw_player(player);
+			draw_particles();
+			draw_asteroids();
+			draw_bullets();
+			DrawText(TextFormat("%d", points), 10, 10, 64, WHITE);
+			DrawText("Blink Cooldown:", 10, 70, 32, RED);
+			DrawRectangle(10, 100, blink_timer <= 0 ? 200 : 200 - 200 * (blink_timer / blink_cooldown), 20, RED);
+
+			kill_bar_half_length = (kill_bar_max_length / 2) * (kill_timer / kill_cooldown);
+
+			DrawRectangle((WIDTH / 2) - kill_bar_half_length, 0, kill_bar_half_length, 15, GREEN);
+			DrawRectangle(WIDTH / 2, 0, kill_bar_half_length, 15, GREEN);
+
+			// if (current_particle_index > 0)
+			// {
+			// 	DrawText(TextFormat("%f, %f", particle_groups[current_particle_index - 1].particles[0].pos.x, particle_groups[current_particle_index - 1].particles[0].pos.y), 10, 700, 32, RED);
+			// }
+
+			// DrawText(TextFormat("%d", current_particle_index), 700, 0, 32, WHITE);
+
+			EndDrawing();
 		}
+		break;
 
-		update_bullets();
-
-		update_asteroids(player);
-
-		if (gameover)
+		case GS_GAMEOVER:
 		{
+			if (gameover_first_frame)
+			{
+				// CLEAR VISUAL BUFFER
+				BeginDrawing();
+				ClearBackground(BLACK);
+				draw_player(player);
+				draw_asteroids();
+				draw_bullets();
+				EndDrawing();
+
+				BeginDrawing();
+				ClearBackground(BLACK);
+				draw_player(player);
+				draw_asteroids();
+				draw_bullets();
+				EndDrawing();
+
+				gameover_first_frame = false;
+			}
+
+			BeginDrawing();
+
+			DrawText(TextFormat("%d", points), WIDTH / 2 - (MeasureText(TextFormat("%d", points), 128) / 2), HEIGHT / 2 - 80, 128, BLUE);
+
+			EndDrawing();
+		}
+		break;
+		case GS_NONE:
 			break;
 		}
-
-		// DRAW
-		BeginDrawing();
-		ClearBackground(BLACK);
-		draw_player(player);
-		draw_asteroids();
-		draw_bullets();
-		DrawText(TextFormat("%d", points), 10, 10, 64, WHITE);
-		DrawText("Blink Cooldown:", 10, 70, 32, RED);
-		DrawRectangle(10, 100, blink_timer <= 0 ? 0 : 200 * (blink_timer / blink_cooldown), 20, RED);
-
-		kill_bar_half_length = (kill_bar_max_length / 2) * (kill_timer / kill_cooldown);
-
-		DrawRectangle((WIDTH / 2) - kill_bar_half_length, 0, kill_bar_half_length, 15, GREEN);
-		DrawRectangle(WIDTH / 2, 0, kill_bar_half_length, 15, GREEN);
-
-		DrawText(TextFormat("%f", asteroids[current_asteroid_index - 1].size), 700, 0, 32, WHITE);
-
-		EndDrawing();
 	}
 
-	while (!WindowShouldClose() && gameover)
+	for (int i = 0; i < current_particle_index; i++)
 	{
-		BeginDrawing();
-
-		ClearBackground(BLACK);
-
-		DrawText(TextFormat("%d", points), WIDTH / 2 - MeasureText(TextFormat("%d", points), 128), HEIGHT / 2 - 20, 128, WHITE);
-
-		EndDrawing();
+		free(particle_groups[i].particles);
+		particle_groups[i].particles = NULL;
 	}
 
 	CloseWindow();

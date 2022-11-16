@@ -2,8 +2,8 @@
 [x] A "streak" scoring system
 [✓] A timer that the player needs to refill by killing asteroids
 [x] Different asteroids {
-[x] Smaller size === Faster
-[x] Worth different points depending on how hard they are to hit
+[✓] Smaller size === Faster
+[✓] Worth different points depending on how hard they are to hit
 [x] Rare asteroids worth extra
 [x] Different behaviours like spinning and zig-zagging
 }
