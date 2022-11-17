@@ -83,7 +83,8 @@ int current_particle_index = 0;
 const int BLINK_LENGTH = 200;
 const int BLINK_COOLDOWN = 5;
 
-const int BULLET_TIME_DURATION = 10;
+const int BULLET_TIME_DURATION = 7;
+float global_speed_multiplier = 1;
 
 float kill_cooldown = 10;
 float kill_timer;
@@ -160,6 +161,17 @@ void rotate_player(player_t *player, int dir)
 	static float rotation_speed = 0.07;
 
 	player->angle += dir * rotation_speed;
+}
+
+void add_powerup(player_t *player, powerup_e powerup)
+{
+	player->active_powerup = powerup;
+
+	if (powerup == PW_BULLET_TIME)
+	{
+		player->powerup_timer = BULLET_TIME_DURATION;
+		global_speed_multiplier = 0.3;
+	}
 }
 
 void create_bullet(player_t player)
@@ -241,11 +253,12 @@ void update_particles(void)
 		{
 			particle = &particle_groups[i].particles[j];
 
-			particle->speed *= 0.8;
-			particle->size -= 0.3;
+			particle->speed *= 0.8 + (0.2 * (1.0 - global_speed_multiplier));
 
-			particle->pos.x += particle->dir.x * particle->speed;
-			particle->pos.y += particle->dir.y * particle->speed;
+			particle->size -= 0.3 * global_speed_multiplier;
+
+			particle->pos.x += particle->dir.x * particle->speed * global_speed_multiplier;
+			particle->pos.y += particle->dir.y * particle->speed * global_speed_multiplier;
 
 			if (j == PARTICLE_COUNT - 1 && particle->size <= 0.5)
 			{
@@ -286,7 +299,7 @@ void create_random_asteroid(Vector2 target_pos)
 		.size = size,
 		.speed = speed_thing / size,
 		.point_value = point_thing / size,
-		.powerup = rand() % 10 == 3 ? PW_BULLET_TIME : PW_NONE,
+		.powerup = rand() % 30 == 3 ? PW_BULLET_TIME : PW_NONE,
 	};
 
 	asteroid.dir = get_inbetween_dir_vector(asteroid.pos, target_pos);
@@ -305,8 +318,8 @@ void update_asteroids(player_t *player)
 {
 	for (int i = 0; i < current_asteroid_index; i++)
 	{
-		asteroids[i].pos.x += asteroids[i].dir.x * asteroids[i].speed;
-		asteroids[i].pos.y += asteroids[i].dir.y * asteroids[i].speed;
+		asteroids[i].pos.x += asteroids[i].dir.x * asteroids[i].speed * global_speed_multiplier;
+		asteroids[i].pos.y += asteroids[i].dir.y * asteroids[i].speed * global_speed_multiplier;
 
 		if (CheckCollisionCircleRec(asteroids[i].pos, asteroids[i].size, (Rectangle){.x = player->pos.x, .y = player->pos.y, .width = player->w, .height = player->h}))
 		{
@@ -319,12 +332,13 @@ void update_asteroids(player_t *player)
 			{
 				points += asteroids[i].point_value;
 				kill_timer = kill_cooldown;
-				kill_cooldown *= 0.95;
+				if (player->active_powerup != PW_BULLET_TIME)
+				{
+					kill_cooldown *= 0.95;
+				}
 				if (asteroids[i].powerup == PW_BULLET_TIME)
 				{
-					player->active_powerup = PW_BULLET_TIME;
-					player->powerup_timer = BULLET_TIME_DURATION;
-					puts("Bullet time");
+					add_powerup(player, PW_BULLET_TIME);
 				}
 				create_particle_group(asteroids[i].pos);
 				remove_asteroid(i);
@@ -405,8 +419,8 @@ int main(void)
 				if (player.powerup_timer <= 0)
 				{
 					player.active_powerup = PW_NONE;
+					global_speed_multiplier = 1;
 				}
-				else
 				{
 					player.powerup_timer -= GetFrameTime();
 				}
@@ -421,7 +435,7 @@ int main(void)
 				kill_timer -= GetFrameTime();
 			}
 
-			if (asteroid_spawn_timer > 0.5)
+			if (asteroid_spawn_timer > 0.5 * (1 / global_speed_multiplier))
 			{
 				create_random_asteroid(player.pos);
 				asteroid_spawn_timer = 0;
