@@ -6,5 +6,6 @@
 [✓] Worth different points depending on how hard they are to hit
 [x] Rare asteroids worth extra
 [x] Different behaviours like spinning and zig-zagging
+[x] Power-up asteroid which gives bullet time mode
 }
 [~] A Particle System
