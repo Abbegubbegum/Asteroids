@@ -213,6 +213,8 @@ void draw_bullets(void)
 
 void create_particle_group(Vector2 origin)
 {
+	clock_t start = clock();
+
 	particle_group_t group = (particle_group_t){
 		.origin = origin,
 		.particles = calloc(PARTICLE_COUNT, sizeof(particle_t)),
@@ -234,6 +236,10 @@ void create_particle_group(Vector2 origin)
 	current_particle_index++;
 
 	current_particle_index = current_particle_index % MAX_PARTICLE_GROUPS;
+
+	clock_t end = clock();
+
+	printf("%f\n", ((double)(end - start)) / CLOCKS_PER_SEC);
 }
 
 void remove_particle_group(int index)
