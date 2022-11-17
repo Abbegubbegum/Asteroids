@@ -8,7 +8,8 @@
 typedef enum
 {
 	GS_NONE,
-	GS_RUNNING,
+	GS_START_MENU,
+	GS_GAMEPLAY,
 	GS_GAMEOVER,
 } gamestate_e;
 
@@ -72,6 +73,7 @@ const float ASTEROID_BASE_RADIUS = 15;
 const float ASTEROID_BASE_SPEED = 5;
 asteroid_t asteroids[128];
 int current_asteroid_index = 0;
+float asteroid_spawn_timer = 0;
 
 const int PARTICLE_COUNT = 32;
 const int PARTICLE_START_SPEED = 10;
@@ -82,6 +84,7 @@ int current_particle_index = 0;
 
 const int BLINK_LENGTH = 200;
 const int BLINK_COOLDOWN = 5;
+float blink_timer = 0;
 
 const int BULLET_TIME_DURATION = 7;
 float global_speed_multiplier = 1;
@@ -89,10 +92,16 @@ float global_speed_multiplier = 1;
 float kill_cooldown = 10;
 float kill_timer;
 
+const int kill_bar_max_length = 300;
+int kill_bar_half_length;
+
 int points = 0;
 bool mouse_controls = true;
+bool gameover_buffer_cleared = false;
 
-gamestate_e gamestate = GS_RUNNING;
+gamestate_e gamestate = GS_START_MENU;
+
+Color start_button_color = GRAY;
 
 Vector2 get_dir_vector(float angle)
 {
@@ -239,7 +248,7 @@ void create_particle_group(Vector2 origin)
 
 	clock_t end = clock();
 
-	printf("%f\n", ((double)(end - start)) / CLOCKS_PER_SEC);
+	// printf("%f\n", ((double)(end - start)) / CLOCKS_PER_SEC);
 }
 
 void remove_particle_group(int index)
@@ -386,6 +395,32 @@ void update_mouse_controls(player_t *player)
 	player->angle = atan2(dir.y, dir.x);
 }
 
+void reset_game(player_t *player)
+{
+	player->pos = (Vector2){300, 300};
+	player->angle = 0;
+	player->active_powerup = PW_NONE;
+	player->powerup_timer = 0;
+
+	current_asteroid_index = 0;
+	current_bullet_index = 0,
+	current_particle_index = 0;
+
+	global_speed_multiplier = 1;
+
+	kill_cooldown = 10;
+	kill_timer = kill_cooldown;
+
+	points = 0;
+
+	blink_timer = 0;
+	asteroid_spawn_timer = 0;
+
+	gameover_buffer_cleared = false;
+
+	start_button_color = GRAY;
+}
+
 int main(void)
 {
 	srand(time(NULL));
@@ -399,23 +434,44 @@ int main(void)
 		.powerup_timer = 0,
 	};
 
-	float asteroid_spawn_timer = 0;
-	float blink_timer = 0;
 	kill_timer = kill_cooldown;
 
-	int kill_bar_max_length = 300;
-	int kill_bar_half_length;
-
-	bool gameover_first_frame = true;
-
-	InitWindow(WIDTH, HEIGHT, "Asteroids");
+	InitWindow(WIDTH, HEIGHT, "TANKER");
 	SetTargetFPS(60);
 
 	while (!WindowShouldClose())
 	{
 		switch (gamestate)
 		{
-		case GS_RUNNING:
+		case GS_START_MENU:
+		{
+			// Start button collision
+			if (CheckCollisionPointRec(GetMousePosition(), (Rectangle){100, 500, 600, 100}))
+			{
+				start_button_color = WHITE;
+
+				if (IsMouseButtonPressed(0))
+				{
+					gamestate = GS_GAMEPLAY;
+				}
+			}
+			else
+			{
+				start_button_color = GRAY;
+			}
+
+			BeginDrawing();
+			ClearBackground(BLACK);
+
+			DrawText("TANKER", WIDTH / 2 - (MeasureText("TANKER", 128) / 2), 100, 128, WHITE);
+
+			DrawRectangle(100, 500, 600, 100, start_button_color);
+			DrawText("START GAME", WIDTH / 2 - (MeasureText("START GAME", 64) / 2), 520, 64, BLACK);
+
+			EndDrawing();
+		}
+		break;
+		case GS_GAMEPLAY:
 		{
 			// UPDATE
 
@@ -567,7 +623,7 @@ int main(void)
 
 		case GS_GAMEOVER:
 		{
-			if (gameover_first_frame)
+			if (!gameover_buffer_cleared)
 			{
 				// CLEAR VISUAL BUFFER
 				// NOTE(@albin): Hack solution to avoid flickering.
@@ -585,12 +641,20 @@ int main(void)
 				draw_bullets();
 				EndDrawing();
 
-				gameover_first_frame = false;
+				gameover_buffer_cleared = true;
+			}
+
+			if (IsKeyPressed(KEY_SPACE))
+			{
+				reset_game(&player);
+				gamestate = GS_START_MENU;
 			}
 
 			BeginDrawing();
 
 			DrawText(TextFormat("%d", points), WIDTH / 2 - (MeasureText(TextFormat("%d", points), 128) / 2), HEIGHT / 2 - 80, 128, BLUE);
+
+			DrawText("PRESS SPACE TO GO BACK", WIDTH / 2 - (MeasureText("PRESS SPACE TO GO BACK", 32) / 2), 600, 32, WHITE);
 
 			EndDrawing();
 		}
