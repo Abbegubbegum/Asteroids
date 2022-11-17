@@ -57,7 +57,7 @@ typedef struct
 typedef struct
 {
 	Vector2 origin;
-	particle_t *particles;
+	particle_t particles[32];
 } particle_group_t;
 
 const int HEIGHT = 800;
@@ -213,9 +213,11 @@ void draw_bullets(void)
 
 void create_particle_group(Vector2 origin)
 {
+	clock_t start = clock();
+
 	particle_group_t group = (particle_group_t){
 		.origin = origin,
-		.particles = calloc(PARTICLE_COUNT, sizeof(particle_t)),
+		.particles = {0},
 	};
 
 	for (int i = 0; i < PARTICLE_COUNT; i++)
@@ -234,11 +236,13 @@ void create_particle_group(Vector2 origin)
 	current_particle_index++;
 
 	current_particle_index = current_particle_index % MAX_PARTICLE_GROUPS;
+	clock_t end = clock();
+
+	printf("%f\n", ((double)(end - start)) / CLOCKS_PER_SEC);
 }
 
 void remove_particle_group(int index)
 {
-	free(particle_groups[index].particles);
 	current_particle_index--;
 	particle_groups[index] = particle_groups[current_particle_index];
 }
@@ -592,13 +596,6 @@ int main(void)
 		case GS_NONE:
 			break;
 		}
-	}
-
-	// FREE MEMORY
-	for (int i = 0; i < current_particle_index; i++)
-	{
-		free(particle_groups[i].particles);
-		particle_groups[i].particles = NULL;
 	}
 
 	CloseWindow();
